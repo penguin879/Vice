@@ -1064,10 +1064,11 @@ class ViceDaemon:
         bundled = [(g["name"], g.get("matches")) for g in _DEFAULT_GAMES]
         matched = _best_game_match(custom, haystacks) or _best_game_match(bundled, haystacks)
 
-        # NEW: Fallback to process name if no match found
-        if matched is None and proc:
-            # Ensure the filename is SAFE by removing extensions and trailing periods
-            matched = os.path.splitext(proc.strip().rstrip('.'))[0]
+        # NEW: Fallback to class name, then process name if no curated match is found
+        if matched is None:
+            fallback = cls or proc
+            if fallback:
+                matched = os.path.splitext(fallback.strip().rstrip('.'))[0]
 
         return matched
 
