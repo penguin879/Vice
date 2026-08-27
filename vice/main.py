@@ -1062,7 +1062,14 @@ class ViceDaemon:
         # User custom games first, explicit user intent beats the bundled list.
         custom = [(g.name, g.matches) for g in self.cfg.discord.custom_games]
         bundled = [(g["name"], g.get("matches")) for g in _DEFAULT_GAMES]
-        return _best_game_match(custom, haystacks) or _best_game_match(bundled, haystacks)
+        matched = _best_game_match(custom, haystacks) or _best_game_match(bundled, haystacks)
+
+        # NEW: Fallback to process name if no match found
+        if matched is None and proc:
+            # Ensure the filename is SAFE by removing extensions and trailing periods
+            matched = os.path.splitext(proc.strip().rstrip('.'))[0]
+
+        return matched
 
     def _get_status(self) -> dict:
         return {
