@@ -20,6 +20,7 @@ RUNTIME_ENV_KEYS = (
     "XDG_RUNTIME_DIR",
     "WAYLAND_DISPLAY",
     "DISPLAY",
+    "XAUTHORITY",
     "DBUS_SESSION_BUS_ADDRESS",
     "XDG_SESSION_TYPE",
     "XDG_CURRENT_DESKTOP",
@@ -139,6 +140,19 @@ def running_under_systemd() -> bool:
     return bool(os.environ.get("INVOCATION_ID") or os.environ.get("JOURNAL_STREAM"))
 
 
+def _display_ready() -> bool:
+    """Display is usable, and if it is an X display, the auth cookie is there.
+
+    On KDE Plasma Wayland the session imports XAUTHORITY into the user
+    manager shortly after DISPLAY. Without it every xdotool/xprop call fails
+    X11 auth and window detection (game tagging) is dead for the life of the
+    process, which is why a hand-restarted daemon appeared to fix tagging.
+    """
+    return has_display() and (
+        not os.environ.get("DISPLAY") or os.environ.get("XAUTHORITY")
+    )
+
+
 def wait_for_display(timeout: float = 60.0, interval: float = 2.0) -> bool:
     """Block until a display shows up in the environment, or give up.
 
@@ -146,18 +160,33 @@ def wait_for_display(timeout: float = 60.0, interval: float = 2.0) -> bool:
     never activate graphical-session.target (#139), and default.target can be
     reached before the compositor has exported anything. Returns whether a
     display was found; the caller carries on either way.
+
+    When DISPLAY is set, XAUTHORITY is awaited as well (bounded, see
+    _display_ready), because X11 window detection cannot work without it.
     """
-    if has_display():
+    if _display_ready():
         return True
     deadline = time.monotonic() + timeout
-    log.info("No display in the environment yet, waiting up to %.0fs for the session", timeout)
+    if has_display():
+        log.info("Display is up but XAUTHORITY is missing, waiting up to 30s for it")
+    else:
+        log.info("No display in the environment yet, waiting up to %.0fs for the session", timeout)
+    display_seen_at: float | None = None
     while time.monotonic() < deadline:
         time.sleep(interval)
         load_user_systemd_env()
-        if has_display():
-            log.info("Session is up (WAYLAND_DISPLAY=%r DISPLAY=%r)",
-                     os.environ.get("WAYLAND_DISPLAY", ""), os.environ.get("DISPLAY", ""))
+        if _display_ready():
+            log.info("Session is up (WAYLAND_DISPLAY=%r DISPLAY=%r XAUTHORITY=%r)",
+                     os.environ.get("WAYLAND_DISPLAY", ""), os.environ.get("DISPLAY", ""),
+                     os.environ.get("XAUTHORITY", ""))
             return True
+        if has_display():
+            if display_seen_at is None:
+                display_seen_at = time.monotonic()
+            elif time.monotonic() - display_seen_at > 30.0:
+                log.warning("XAUTHORITY never appeared within 30s of the display; "
+                            "starting anyway, X11 window detection will be unavailable")
+                return True
     log.warning("No display appeared within %.0fs, starting anyway", timeout)
     return False
 
