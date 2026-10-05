@@ -1234,6 +1234,7 @@ class ViceDaemon:
         custom = [(g.name, g.matches) for g in self.cfg.discord.custom_games]
         bundled = [(g["name"], g.get("matches")) for g in _DEFAULT_GAMES]
         matched = _best_game_match(custom, haystacks) or _best_game_match(bundled, haystacks)
+
         if matched:
             return matched
         # Not on either list. The lists stay the source of truth, since tags and
@@ -1242,7 +1243,14 @@ class ViceDaemon:
         if not app_id:
             from_class = re.match(r"steam_app_(\d+)$", cls)
             app_id = from_class.group(1) if from_class else None
-        return steam_game_name(app_id) if app_id else None
+        steam_name = steam_game_name(app_id) if app_id else None
+        if steam_name:
+            return steam_name
+        # NEW: Fallback to class name, then process name if no curated match is found
+        fallback = cls or proc
+        if fallback:
+            return os.path.splitext(fallback.strip().rstrip('.'))[0]
+        return matched
 
     def _disk_stats(self) -> Optional[dict]:
         """Free space where clips land, for the Home readout.
