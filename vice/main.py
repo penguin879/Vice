@@ -1272,7 +1272,14 @@ class ViceDaemon:
         if not app_id:
             from_class = re.match(r"steam_app_(\d+)$", cls)
             app_id = from_class.group(1) if from_class else None
-        return steam_game_name(app_id) if app_id else None
+        steam_name = steam_game_name(app_id) if app_id else None
+        if steam_name:
+            return steam_name
+        # Fallback to class name, then process name if no curated match is found
+        fallback = cls or proc
+        if fallback:
+            return os.path.splitext(fallback.strip().rstrip('.'))[0]
+        return None
 
     def _disk_stats(self) -> Optional[dict]:
         """Free space where clips land, for the Home readout.
